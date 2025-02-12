@@ -8,6 +8,7 @@ import (
 	"github.com/rulego/rulego/utils/maps"
 	"github.com/rulego/rulego/utils/str"
 	"github.com/sashabaranov/go-openai"
+	"regexp"
 	"strings"
 )
 
@@ -15,12 +16,27 @@ func init() {
 	_ = rulego.Registry.Register(&TextGenerateNode{})
 }
 
+// 定义正则表达式
+// <think>[\s\S]*?</think>：匹配 <think> 和 </think> 之间的所有内容，包括换行符
+var re = regexp.MustCompile(`<think>[\s\S]*?</think>`)
+
+// NodeConfiguration 组件配置
 type NodeConfiguration struct {
-	Url          string
-	Key          string
-	Model        string
-	SystemPrompt string
-	Messages     []ChatMessage
+	Url          string        // 请求地址
+	Key          string        // API Key
+	Model        string        // 模型名称
+	SystemPrompt string        // 系统提示
+	Messages     []ChatMessage // 上下文/用户消息列表
+	KeepThink    bool          //是否保留思考过程
+	Param        Param         //大模型参数
+}
+
+// Param 大模型参数
+type Param struct {
+	Temperature float32  `json:"temperature"` //采样温度控制输出的随机性。温度值在 [0.0, 2.0] 范围内，值越高，输出越随机和创造性；值越低，输出越稳定。
+	TopP        float32  `json:"top_p"`       // 采样方法的取值范围为 [0.0,1.0]。top_p 值确定模型从概率最高的前p%的候选词中选取 tokens；当 top_p 为 0 时，此参数无效。
+	MaxTokens   int      `json:"max_tokens"`  // 最大输出长度
+	Stop        []string `json:"stop"`        // 模型停止输出的标记
 }
 
 type ChatMessage struct {
@@ -33,6 +49,7 @@ type ChatMessageTemplate struct {
 	ContentTemplate str.Template
 }
 
+// TextGenerateNode 向模型提供指令、查询或任何基于文本的输入，并得到大模型文本响应
 type TextGenerateNode struct {
 	Config               NodeConfiguration
 	Client               *openai.Client
@@ -42,7 +59,7 @@ type TextGenerateNode struct {
 }
 
 func (x *TextGenerateNode) Type() string {
-	return "ai/chat"
+	return "ai/llm"
 }
 
 func (x *TextGenerateNode) New() types.Node {
@@ -51,6 +68,10 @@ func (x *TextGenerateNode) New() types.Node {
 			Url:   "https://ai.gitee.com/v1",
 			Key:   "",
 			Model: openai.O1Mini,
+			Param: Param{
+				Temperature: 0.6,
+				TopP:        0.75,
+			},
 		},
 	}
 }
@@ -109,8 +130,12 @@ func (x *TextGenerateNode) sendCompletionMessage(ctx types.RuleContext, evn map[
 	resp, err := x.Client.CreateChatCompletion(
 		ctx.GetContext(),
 		openai.ChatCompletionRequest{
-			Model:    x.Config.Model,
-			Messages: messages,
+			Model:       x.Config.Model,
+			Messages:    messages,
+			Temperature: x.Config.Param.Temperature,
+			TopP:        x.Config.Param.TopP,
+			MaxTokens:   x.Config.Param.MaxTokens,
+			Stop:        x.Config.Param.Stop,
 		},
 	)
 	if err != nil {
@@ -120,7 +145,9 @@ func (x *TextGenerateNode) sendCompletionMessage(ctx types.RuleContext, evn map[
 	for _, choice := range resp.Choices {
 		combinedContent += choice.Message.Content
 	}
-
+	if !x.Config.KeepThink {
+		combinedContent = strings.TrimLeft(re.ReplaceAllString(combinedContent, ""), "\n")
+	}
 	return combinedContent, err
 }
 
