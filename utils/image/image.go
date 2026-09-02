@@ -32,6 +32,11 @@ import (
 	"time"
 
 	"golang.org/x/image/draw"
+
+	// 注册 BMP/WebP 解码器（decode-only 包），CompressImage 据此把这两类
+	// 图片重编码为 PNG/JPEG 再送模型
+	_ "golang.org/x/image/bmp"
+	_ "golang.org/x/image/webp"
 )
 
 // DefaultImageMaxSize 默认图片最大尺寸
