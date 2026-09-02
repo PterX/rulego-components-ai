@@ -202,6 +202,69 @@ func TestCreateTools_MultipleTypes(t *testing.T) {
 	assert.Equal(t, 2, len(toolInfos))
 }
 
+// fillInfoTargetChain 最小可加载的目标链：带名称/描述/自定义 inputSchema
+const fillInfoTargetChain = `{
+  "ruleChain": {
+    "id": "researcher",
+    "name": "研究员",
+    "additionalInfo": {
+      "description": "负责检索资料",
+      "inputSchema": "{\"type\":\"object\",\"properties\":{\"q\":{\"type\":\"string\"}}}"
+    }
+  },
+  "metadata": {
+    "nodes": [
+      {"type": "jsFilter", "name": "f", "configuration": {"jsScript": "return true;"}}
+    ],
+    "connections": [],
+    "firstNodeIndex": 0
+  }
+}`
+
+// 目标未注册：名称/描述保持原值，参数兜底默认 schema，避免工具以无参数定义注册。
+func TestFillAgentToolInfo_TargetNotRegistered_DefaultParameters(t *testing.T) {
+	pool := engine.NewPool()
+	tc := fillAgentToolInfo(config.Tool{
+		Type:        config.ToolTypeAgent,
+		Name:        "研究员",
+		Description: "负责检索资料",
+		TargetId:    "researcher",
+	}, pool, nil)
+
+	assert.Equal(t, "研究员", tc.Name)
+	assert.Equal(t, "负责检索资料", tc.Description)
+	assert.Equal(t, DefaultAgentInputSchema, tc.Parameters)
+}
+
+// 名称/描述/参数齐备：原样返回，不查池
+func TestFillAgentToolInfo_AllProvided(t *testing.T) {
+	tc := fillAgentToolInfo(config.Tool{
+		Type:        config.ToolTypeAgent,
+		Name:        "x",
+		Description: "d",
+		Parameters:  `{"type":"object"}`,
+		TargetId:    "researcher",
+	}, engine.NewPool(), nil)
+	assert.Equal(t, `{"type":"object"}`, tc.Parameters)
+}
+
+// 目标已注册且带自定义 inputSchema：优先用目标链的 inputSchema
+func TestFillAgentToolInfo_TargetRegistered_CustomInputSchema(t *testing.T) {
+	pool := engine.NewPool()
+	_, err := pool.New("researcher", []byte(fillInfoTargetChain))
+	assert.Nil(t, err)
+
+	tc := fillAgentToolInfo(config.Tool{
+		Type:     config.ToolTypeAgent,
+		TargetId: "researcher",
+	}, pool, nil)
+
+	assert.Equal(t, "研究员", tc.Name)
+	assert.Equal(t, "负责检索资料", tc.Description)
+	assert.True(t, strings.Contains(tc.Parameters, `"q"`),
+		"expect custom inputSchema, got: %s", tc.Parameters)
+}
+
 // TestCreateChatModelAgent 测试创建 ChatModel Agent
 func TestCreateChatModelAgent(t *testing.T) {
 	t.Skip("Requires valid API endpoint and LLM configuration")
