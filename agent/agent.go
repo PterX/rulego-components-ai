@@ -38,7 +38,7 @@ type ChatAgentConfig struct {
 	config.LLMConfig    `json:",squash"`
 	MaxStep             int    `json:"maxStep" label:"Max Steps" desc:"Maximum number of reasoning-tool loops the agent can perform"`
 	MaxToolOutputLength int    `json:"maxToolOutputLength" label:"Max Tool Output Length" desc:"Truncate tool output beyond this length to prevent context overflow. Default 50000"`
-	StreamToolCallCheck string `json:"streamToolCallCheck" label:"Stream Tool-call Check" desc:"How to detect tool calls in streaming output (agents with tools only): empty=auto (default, suits most models), firstContent=decide on first text chunk, drain=consume whole stream first"`
+	StreamToolCallCheck string `json:"streamToolCallCheck" label:"Stream Tool-call Check" desc:"How to detect tool calls in streaming output (agents with tools only): empty=auto (no tools=firstContent, with tools=window), firstContent=decide on first text chunk, drain=consume whole stream first, window=keep watching 500ms after the first text chunk. Misrouted tool calls auto-switch the mode to drain and retry the turn"`
 }
 
 // Desc returns the component description

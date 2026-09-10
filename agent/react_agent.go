@@ -173,13 +173,19 @@ func (x *ReactAgentNode) Init(ruleConfig types.Config, configuration types.Confi
 		maxStep = DefaultMaxStep
 	}
 
-	checkMode := resolveStreamToolCallCheck(x.Config.StreamToolCallCheck, len(tools) > 0)
+	// 判定模式持有者同时交给切面执行器：流式输出检测到被误判为纯文本的工具调用时
+	// 升级为 drain 并重跑本轮（见 ExecuteStream）。无工具的智能体不挂持有者，
+	// 模型幻觉出的工具调用不值得重跑。
+	checkState := newStreamCheckState(resolveStreamToolCallCheck(x.Config.StreamToolCallCheck, len(tools) > 0))
+	if len(tools) > 0 {
+		x.aspectExecutor.streamCheck = checkState
+	}
 	agent, err := CreateReactAgent(context.Background(), chatModel, AgentOptions{
-		MaxStep:             maxStep,
-		ToolsConfig:         buildToolsConfig(tools),
-		Logger:              ruleConfig.Logger,
-		MessageModifier:     messageModifier,
-		StreamToolCallCheck: checkMode,
+		MaxStep:          maxStep,
+		ToolsConfig:      buildToolsConfig(tools),
+		Logger:           ruleConfig.Logger,
+		MessageModifier:  messageModifier,
+		StreamCheckState: checkState,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to create react agent: %v", err)

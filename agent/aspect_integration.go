@@ -35,6 +35,8 @@ import (
 type AgentAspectExecutor struct {
 	manager *aspect.AspectManager
 	logger  types.Logger
+	// streamCheck 流式工具调用判定模式持有者，nil 时检测到误判只告警不升级
+	streamCheck *streamCheckState
 }
 
 // NewAgentAspectExecutor 创建切面执行器
@@ -164,64 +166,111 @@ func (e *AgentAspectExecutor) ExecuteStream(
 	e.logDebugInfo(mergedMessages, input.SystemPrompt)
 
 	// 4. Around 切面 + 执行流式调用
-	output, err := e.manager.ExecuteAround(ctx, point, input, func(ctx context.Context, in *aspect.AgentInput) (*aspect.AgentOutput, error) {
-		streamReader, err := streamExecutor(ctx, mergedMessages)
-		if err != nil {
-			return nil, err
-		}
-		defer streamReader.Close()
+		output, err := e.manager.ExecuteAround(ctx, point, input, func(ctx context.Context, in *aspect.AgentInput) (*aspect.AgentOutput, error) {
+			// 本轮发起时的判定模式。须在发起模型调用前读取：并发轮在调用期间升级时，
+			// 迟读会读到 drain，本轮被误判就漏掉重跑
+			startMode := ""
+			if e.streamCheck != nil {
+				startMode = e.streamCheck.load()
+			}
 
-		var fullContent strings.Builder
-		var lastChunk *schema.Message
-		var streamErr error // 流中途错误（非 EOF），不再静默吞掉
-		chunkCount := 0
-
-		// onChunk 由上层（react_agent）负责入 StreamTellQueue，非阻塞，这里直接同步调用即可。
-		for {
-			chunk, err := streamReader.Recv()
+			streamReader, err := streamExecutor(ctx, mergedMessages)
 			if err != nil {
-				if err != io.EOF {
-					if e.logger != nil {
-						e.logger.Warnf("[ExecuteStream] Stream ended with error: %v, total chunks: %d, content length: %d", err, chunkCount, fullContent.Len())
+				return nil, err
+			}
+			defer streamReader.Close()
+
+			var fullContent strings.Builder
+			var lastChunk *schema.Message
+			var streamErr error // 流中途错误（非 EOF），不再静默吞掉
+			chunkCount := 0
+			sawToolCalls := false
+			guardTripped := false
+
+		// 消费一条流：内容 chunk 经 onChunk 转发前端，累计内容与结束 chunk
+		consume := func(sr *schema.StreamReader[*schema.Message]) {
+			for {
+				chunk, err := sr.Recv()
+				if err != nil {
+					if err != io.EOF {
+						streamErr = err
+						if e.logger != nil {
+							e.logger.Warnf("[ExecuteStream] Stream ended with error: %v, total chunks: %d, content length: %d", err, chunkCount, fullContent.Len())
+						}
 					}
-					streamErr = err
+					return
 				}
-				break
+				lastChunk = chunk
+
+				if hasStreamToolCalls(chunk.ToolCalls) {
+					sawToolCalls = true
+				}
+
+				if chunk.Content != "" || chunk.ReasoningContent != "" {
+					chunkCount++
+					if chunk.Content != "" {
+						fullContent.WriteString(chunk.Content)
+					}
+
+					streamChunk := &aspect.StreamChunk{
+						Content:   chunk.Content,
+						IsFinal:   false,
+						Timestamp: time.Now(),
+					}
+					e.manager.ExecuteStreamChunk(ctx, point, streamChunk)
+
+					if onChunk != nil {
+						onChunk(chunk.Content, chunk.ReasoningContent, chunkCount == 1)
+					}
+				}
+
+				if chunkCount > config.MaxStreamChunks {
+					guardTripped = true
+					if e.logger != nil {
+						e.logger.Warnf("[ExecuteStream] MaxStreamChunks (%d) exceeded, stopping stream", config.MaxStreamChunks)
+					}
+					return
+				}
 			}
-			lastChunk = chunk
+		}
 
-			if chunk.Content != "" || chunk.ReasoningContent != "" {
-				chunkCount++
-				if chunk.Content != "" {
-					fullContent.WriteString(chunk.Content)
-				}
+		consume(streamReader)
 
-				streamChunk := &aspect.StreamChunk{
-					Content:   chunk.Content,
-					IsFinal:   false,
-					Timestamp: time.Now(),
-				}
-				e.manager.ExecuteStreamChunk(ctx, point, streamChunk)
-
-				if onChunk != nil {
-					onChunk(chunk.Content, chunk.ReasoningContent, chunkCount == 1)
-				}
+		// END 路径的流里出现过工具调用：被误判为纯文本，工具不会执行（先文本后
+		// 工具调用的模型前导文本超出观察窗口）。升级为 drain，流无中途错误时对
+		// 同轮输入重跑一次，重跑内容接在已流出内容之后；中途出错、未挂持有者、
+		// 已是 drain（流超过 MaxStreamChunks 护栏提前放弃判定的形态）或本轮已被
+		// 护栏截断时不重跑，升级仍生效。
+		if sawToolCalls && streamErr == nil && e.streamCheck != nil && startMode != StreamCheckDrain {
+			from, changed := e.streamCheck.escalate()
+			if e.logger != nil && changed {
+				e.logger.Warnf("[ExecuteStream] tool calls were routed as plain text, check mode auto-switched %s -> drain", from)
 			}
-
-			if chunkCount > config.MaxStreamChunks {
+			if guardTripped {
+				// 本轮流已被护栏截断，重跑同样不完整，仅靠升级保后续轮次
 				if e.logger != nil {
-					e.logger.Warnf("[ExecuteStream] MaxStreamChunks (%d) exceeded, stopping stream", config.MaxStreamChunks)
+					e.logger.Warnf("[ExecuteStream] skip drain-mode retry for this turn: stream exceeded MaxStreamChunks")
 				}
-				break
+			} else {
+				retryReader, retryErr := streamExecutor(ctx, mergedMessages)
+				if retryErr != nil {
+					if e.logger != nil {
+						e.logger.Warnf("[ExecuteStream] drain-mode retry failed: %v", retryErr)
+					}
+				} else {
+					defer retryReader.Close()
+					consume(retryReader)
+				}
+			}
+		} else if sawToolCalls && streamErr == nil && e.logger != nil {
+			if startMode == StreamCheckDrain {
+				e.logger.Warnf("[ExecuteStream] tool calls were routed as plain text and not executed, check mode is drain: the stream may have exceeded MaxStreamChunks")
+			} else {
+				e.logger.Warnf("[ExecuteStream] tool calls were routed as plain text and not executed, no check state attached")
 			}
 		}
 
-		// 6. 构建输出。流中途出错时把错误带进 output.Error 并返回 error，让上层感知"被截断"而非静默成功。
-		// 到达 END 路径的流若带工具调用，说明被误判为纯文本（先文本后工具调用的模型超出前瞻窗口），
-		// 工具不会执行，提示用户改用 drain 模式
-		if lastChunk != nil && len(lastChunk.ToolCalls) > 0 && e.logger != nil {
-			e.logger.Warnf("[ExecuteStream] model emitted tool calls after content; they were routed as plain text and not executed. set streamToolCallCheck=drain if tools are required")
-		}
+		// 构建输出。流中途出错时把错误带进 output.Error 并返回 error，让上层感知"被截断"而非静默成功。
 		output := e.buildStreamOutput(ctx, fullContent.String(), lastChunk, input, startTime)
 		if streamErr != nil {
 			output.Error = streamErr
