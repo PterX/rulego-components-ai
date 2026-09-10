@@ -19,13 +19,13 @@ package browseruse
 import (
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"net/url"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/bytedance/sonic"
 	"github.com/chromedp/cdproto/cdp"
 	"github.com/chromedp/cdproto/page"
 	"github.com/chromedp/cdproto/target"
@@ -165,16 +165,16 @@ func (b *Tool) InvokableRun(ctx context.Context, argumentsInJSON string, opts ..
 	}
 
 	param := &Param{}
-	err = sonic.UnmarshalString(argumentsInJSON, param)
+	err = json.Unmarshal([]byte(argumentsInJSON), param)
 	result, err := b.Execute(param)
 	if err != nil {
 		return "", err
 	}
-	content, err := sonic.MarshalString(result)
+	content, err := json.Marshal(result)
 	if err != nil {
 		return "", err
 	}
-	return content, nil
+	return string(content), nil
 }
 
 // ensureInitialized 确保浏览器已初始化（延迟初始化）
@@ -588,7 +588,7 @@ func (b *Tool) Execute(params *Param) (*ToolResult, error) {
 
 		// 使用 JavaScript 直接设置值，避免 chromedp.Clear/SendKeys 在某些情况下（如 textarea）报错
 		// 错误示例：textarea node 181 does not have child #text node
-		textJSON, err := sonic.MarshalString(text)
+		textJSON, err := json.Marshal(text)
 		if err != nil {
 			return &ToolResult{Error: fmt.Sprintf("failed to marshal text: %v", err)}, nil
 		}
@@ -1125,7 +1125,7 @@ func (b *Tool) updateElements(ctx context.Context) error {
 		xpaths[i] = node.FullXPath()
 	}
 
-	xpathsJSON, err := sonic.MarshalString(xpaths)
+	xpathsJSON, err := json.Marshal(xpaths)
 	if err != nil {
 		return fmt.Errorf("failed to marshal xpaths: %v", err)
 	}
