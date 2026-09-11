@@ -14,6 +14,9 @@
  * limitations under the License.
  */
 
+// Package intent 意图识别节点:ai/intent 走 LLM 分类,
+// ai/localIntent 走嵌入向量余弦相似度(低延迟、零 LLM 调用)。
+
 package intent
 
 import (

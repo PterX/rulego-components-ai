@@ -1,3 +1,7 @@
+// Package tool 工具注册表与内置工具集:bash/read/write/edit/glob/grep/
+// browseruse/skill 各为独立子包;AsMCPToolProvider 把注册表桥接给
+// 只认 types.MCPToolProvider 的节点(如 ai/agentLite)。
+
 package tool
 
 import (

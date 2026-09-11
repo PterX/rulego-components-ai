@@ -13,8 +13,10 @@ package all
 
 import (
 	_ "github.com/rulego/rulego-components-ai/action"
-	// 节点组件 - 注册到 rulego.Registry
+	// 节点组件 - 注册到 rulego.Registry。agent(eino 版)必须在 agent/lite
+	// 之前:两包共用类型名 ai/agent,同名先注册者生效,后到者注册失败自行让位。
 	_ "github.com/rulego/rulego-components-ai/agent"
+	_ "github.com/rulego/rulego-components-ai/agent/lite"
 	_ "github.com/rulego/rulego-components-ai/intent"
 	_ "github.com/rulego/rulego-components-ai/mcp"
 

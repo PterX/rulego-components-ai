@@ -37,6 +37,8 @@ A **declarative** AI agent development framework built on the [RuleGo](https://g
 ```
 ai/
 ├── agent/          # Core ReAct agent node (type: ai/agent)
+│   └── lite/       #   Same-type lightweight implementation of ai/agent
+│                   #   (stdlib-only, no eino/sonic, compiles on 32-bit)
 ├── action/         # Simple LLM operation nodes
 │                   #   - ai/llm       Text generation
 │                   #   - ai/createImage Image generation
@@ -59,12 +61,15 @@ ai/
 │   ├── write/      #   File writing
 │   ├── edit/       #   File editing (line-level, search-replace)
 │   ├── browseruse/ #   Browser automation (chromedp)
+│   ├── glob/       #   File pattern matching
+│   ├── grep/       #   Content search (regex + literal)
 │   ├── mcp/        #   MCP tool adapter (self + remote mode)
 │   └── skill/      #   Skill invocation
 ├── utils/          # Utility functions
 │   ├── contextx/   #   Type-safe Context Key
 │   ├── image/      #   Image loading, Base64 conversion
 │   ├── llm/        #   LLM response parsing
+│   ├── doomloop/   #   Repeated tool-call doom loop detection
 │   ├── token/      #   Token estimation and metrics collection
 │   └── tool/       #   Tool parameter JSON Schema parsing
 └── all/            # One-liner import for all components
@@ -170,12 +175,27 @@ func main() {
 
 | Node Type | Package | Description |
 |-----------|---------|-------------|
-| `ai/agent` | `agent` | ReAct agent with tool calling, streaming output, multimodal support |
+| `ai/agent` | `agent` / `agent/lite` | ReAct agent with tool calling, streaming output, multimodal support; see the two-implementation note below |
 | `ai/llm` | `action` | Single-shot text generation |
 | `ai/createImage` | `action` | Image generation (DALL-E 3) |
 | `ai/intent` | `intent` | LLM-based intent recognition |
 | `ai/localIntent` | `intent` | Embedding vector-based intent recognition (low latency, zero LLM calls) |
-| `x/mcpClient` | `mcp` | MCP client node |
+| `ai/mcpClient` | `mcp` | MCP client node |
+
+> **Two implementations share the type name `ai/agent`**: the full version in `agent` (eino) and the lightweight version in `agent/lite` (stdlib-only, 32-bit platforms, failover, skills injection). When both packages are imported, the first one to register wins — the `all` bundle imports the eino version first; import `agent/lite` alone (or in 32-bit builds) to get the lightweight one. I/O contracts (request messages, SSE frames, metadata) are identical; see the comparison table below. The standalone type name `ai/agentLite` is retired.
+### `ai/agent` implementation comparison
+
+| Field | eino (`agent`) | lite (`agent/lite`) |
+|---|---|---|
+| `url` / `key` / `model` / `systemPrompt` / `maxStep` / `maxToolOutputLength` / `maxRetries` / `images` | yes | yes — same name, semantics and defaults (maxStep 50, maxRetries 3, rune-safe tool output truncation) |
+| `${global.*}` in `url`/`key`/`model` | replaced by the host before chain load | resolved inside the node from engine Properties |
+| `params.temperature` / `topP` / `maxTokens` | defaults 0.7 / 0.9 when zero; `maxTokens` maps to `max_completion_tokens` on the wire | identical |
+| `params` others (`presencePenalty`, `frequencyPenalty`, `stop`, `responseFormat`, `jsonSchema`, `keepThink`, `extraFields`) | yes | ignored |
+| `messages` / `streamRetryMode` / `streamToolCallCheck` | yes | ignored |
+| `failover[]` `url`/`key`/`model` + `circuitCooldownSec` | yes | yes — per-endpoint `params` override not supported |
+| `tools` | string entries or descriptor objects (`{type,name,targetId,...}`) | string entries only (allowlist, empty = no filter) — the string form runs on both implementations; object descriptors are eino-only and fail lite Init with a clear error |
+| `skillsDir` / `skills` | not available | prompt-injection skills (lite specific) |
+
 
 ## Agent Configuration (ai/agent)
 
@@ -214,7 +234,8 @@ func main() {
 
 | Type | Description |
 |------|-------------|
-| `builtin` | Built-in tools: `bash`, `read`, `write`, `edit`, `browseruse`, `skill` |
+| string | Shorthand: tool name only, resolved via factory → RuleConfig UDF → global registry; the portable form shared by both `ai/agent` implementations |
+| `builtin` | Built-in tools: `bash`, `read`, `write`, `edit`, `glob`, `grep`, `browseruse`, `skill` |
 | `rulechain` | Call another rule chain as a tool |
 | `agent` | Call a sub-agent (semantic alias of rulechain) |
 | `mcp` | MCP protocol tool, supports self (in-process) and remote (http/stdio) modes |

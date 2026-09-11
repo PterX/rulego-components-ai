@@ -36,6 +36,7 @@ import (
 	"github.com/rulego/rulego-components-ai/config"
 	aitool "github.com/rulego/rulego-components-ai/tool"
 	mcpadapter "github.com/rulego/rulego-components-ai/tool/mcp"
+	"github.com/rulego/rulego-components-ai/utils/doomloop"
 	"github.com/rulego/rulego/api/types"
 )
 
@@ -439,7 +440,9 @@ func CreateTool(toolConfig config.Tool, opts ToolOptions) (tool.BaseTool, *schem
 		// rulechain 类型：使用配置中的名称和描述
 		toolInstance = NewRuleGoTool(toolConfig)
 
-	case config.ToolTypeBuiltin:
+	case config.ToolTypeBuiltin, "":
+		// 空 type = tools 字符串速记(与 lite 实现共享的可移植写法),
+		// 与 builtin 走同一解析梯子:工厂实例 → RuleConfig UDF → 全局注册表。
 		var t tool.BaseTool
 		var ok bool
 
@@ -466,7 +469,7 @@ func CreateTool(toolConfig config.Tool, opts ToolOptions) (tool.BaseTool, *schem
 		}
 
 		if !ok {
-			return nil, nil, nil, fmt.Errorf("builtin tool not found: %s", toolConfig.Name)
+			return nil, nil, nil, fmt.Errorf("tool not found: %s", toolConfig.Name)
 		}
 		toolInstance = t
 
@@ -683,7 +686,7 @@ func dedupRepetitiveToolCalls(_ context.Context, msgs []*schema.Message) []*sche
 		r := round{asstIdx: i}
 		if len(m.ToolCalls) == 1 { // 仅单 call 计算签名，多并行保守跳过
 			tc := m.ToolCalls[0]
-			r.sig = tc.Function.Name + "\x00" + normalizeArgsKeyOrder(tc.Function.Arguments)
+			r.sig = tc.Function.Name + "\x00" + doomloop.NormalizeArgsKeyOrder(tc.Function.Arguments)
 		}
 		for j := i + 1; j < len(msgs) && msgs[j].Role == schema.Tool; j++ {
 			r.tools = append(r.tools, j)
@@ -899,4 +902,3 @@ func buildToolsConfig(tools []tool.BaseTool) compose.ToolsNodeConfig {
 		},
 	}
 }
-

@@ -14,6 +14,9 @@
  * limitations under the License.
  */
 
+// Package builtin 内置切面:AG-UI 可视化事件、执行日志、会话历史
+// 注入与保存;编程式注册到 aspect 管理器。
+
 package builtin
 
 import (

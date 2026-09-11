@@ -1,3 +1,6 @@
+// Package skill SKILL.md 技能工具:扫描全局/本地两级技能目录,
+// 技能清单动态注入 system prompt,模型按需读取技能全文。
+
 package skill
 
 import (

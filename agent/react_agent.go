@@ -31,6 +31,7 @@ import (
 	"github.com/rulego/rulego-components-ai/config"
 	aitool "github.com/rulego/rulego-components-ai/tool"
 	"github.com/rulego/rulego-components-ai/tool/common"
+	"github.com/rulego/rulego-components-ai/utils/doomloop"
 	"github.com/rulego/rulego-components-ai/utils/token"
 	"github.com/rulego/rulego/api/types"
 	"github.com/rulego/rulego/components/base"
@@ -110,7 +111,9 @@ func (x *ReactAgentNode) applyDefaultLLMParams() {
 
 // Init 初始化节点
 func (x *ReactAgentNode) Init(ruleConfig types.Config, configuration types.Configuration) error {
-	// 1. 解析配置
+	// 1. 解析配置。tools 字符串速记先规整为对象——mapstructure 不走
+	// json 钩子,须经 config.NormalizeToolsShorthand(与 lite 实现共享的可移植写法)。
+	config.NormalizeToolsShorthand(configuration)
 	err := maps.Map2Struct(configuration, &x.Config)
 	if err != nil {
 		return err
@@ -322,7 +325,7 @@ func (x *ReactAgentNode) buildRunContext(ctx types.RuleContext, msg types.RuleMs
 	runCtx = WithStepCounter(runCtx, &stepCounter)
 
 	// 注入 doom-loop 检测器（agent 级共享，跨工具抓死循环）
-	runCtx = WithDoomLoopDetector(runCtx, NewDoomLoopDetector())
+	runCtx = doomloop.WithDoomLoopDetector(runCtx, doomloop.NewDoomLoopDetector())
 
 	// 获取规则链 ID
 	chainId := ""

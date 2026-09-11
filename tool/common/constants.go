@@ -1,4 +1,3 @@
-// Package common provides shared utilities and constants for AI tools.
 package common
 
 const (

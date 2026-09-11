@@ -1,3 +1,6 @@
+// Package session 会话与对话历史管理:多 scope 隔离、可插拔存储与
+// 上下文压缩;经 aspect/builtin 的会话切面注入 agent 执行过程。
+
 package session
 
 import (

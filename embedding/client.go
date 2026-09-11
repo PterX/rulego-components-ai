@@ -1,3 +1,6 @@
+// Package embedding 轻量 embedding 客户端与余弦相似度计算,
+// 纯标准库实现,供 ai/localIntent 意图识别使用。
+
 package embedding
 
 import (

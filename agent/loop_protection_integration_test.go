@@ -10,6 +10,7 @@ import (
 	"github.com/cloudwego/eino/components/model"
 	"github.com/cloudwego/eino/components/tool"
 	"github.com/cloudwego/eino/schema"
+	"github.com/rulego/rulego-components-ai/utils/doomloop"
 	"github.com/stretchr/testify/require"
 )
 
@@ -81,7 +82,7 @@ func maxConsecutiveSameEcho(msgs []*schema.Message) int {
 	prevArgs := ""
 	for _, m := range msgs {
 		if m.Role == schema.Assistant && len(m.ToolCalls) > 0 && m.ToolCalls[0].Function.Name == "echo" {
-			a := normalizeArgsKeyOrder(m.ToolCalls[0].Function.Arguments)
+			a := doomloop.NormalizeArgsKeyOrder(m.ToolCalls[0].Function.Arguments)
 			if a != "" && a == prevArgs {
 				run++
 			} else {
@@ -148,7 +149,7 @@ func TestIntegration_DoomBlocksRepetitiveToolCalls(t *testing.T) {
 	ctx := context.Background()
 	stepCounter := int32(0)
 	ctx = WithStepCounter(ctx, &stepCounter)
-	ctx = WithDoomLoopDetector(ctx, NewDoomLoopDetector())
+	ctx = doomloop.WithDoomLoopDetector(ctx, doomloop.NewDoomLoopDetector())
 
 	_, err = agent.Generate(ctx, []*schema.Message{schema.UserMessage("test")})
 	require.NoError(t, err)

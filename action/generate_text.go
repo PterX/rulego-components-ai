@@ -1,3 +1,6 @@
+// Package action 单次 LLM 操作节点:无工具调用循环的直连模型。
+// 注册 ai/llm(文本生成)与 ai/createImage(图片生成);需要 ReAct 循环/工具调用时用 agent 包。
+
 package action
 
 import (

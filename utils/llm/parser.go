@@ -1,3 +1,5 @@
+// Package llm LLM 响应文本的解析辅助(如从回复中抽取 JSON)。
+
 package llm
 
 import (

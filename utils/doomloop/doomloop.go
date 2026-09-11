@@ -1,4 +1,7 @@
-package agent
+// Package doomloop 工具重复调用死循环检测:同名同参重复与连续失败
+// 达阈值时向 LLM 回注警告文本;纯标准库,agent 与 agent/lite 共用。
+
+package doomloop
 
 import (
 	"context"
@@ -39,13 +42,13 @@ func NewDoomLoopDetector() *DoomLoopDetector {
 }
 
 func hashArgs(args string) string {
-	h := sha1.Sum([]byte(normalizeArgsKeyOrder(args)))
+	h := sha1.Sum([]byte(NormalizeArgsKeyOrder(args)))
 	return hex.EncodeToString(h[:])
 }
 
-// normalizeArgsKeyOrder 规范化 JSON key 顺序：unmarshal 成 map 再 marshal（Go json 按 key 字典序），
+// NormalizeArgsKeyOrder 规范化 JSON key 顺序：unmarshal 成 map 再 marshal（Go json 按 key 字典序），
 // 避免 LLM 两次给 {"path":"a","n":1} 与 {"n":1,"path":"a"} 被判不同而漏报重复（审查 M1）。
-func normalizeArgsKeyOrder(args string) string {
+func NormalizeArgsKeyOrder(args string) string {
 	args = strings.TrimSpace(args)
 	if args == "" {
 		return args

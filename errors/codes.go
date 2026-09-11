@@ -1,4 +1,3 @@
-// Package errors provides unified error handling for AI components.
 package errors
 
 // ErrorCode defines standardized error codes for AI components.

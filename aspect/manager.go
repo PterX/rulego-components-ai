@@ -14,6 +14,9 @@
  * limitations under the License.
  */
 
+// Package aspect 智能体执行的切面(AOP)框架:Before/After 环绕
+// agent 过程的扩展点;内置实现见 aspect/builtin(日志/会话/可视化)。
+
 package aspect
 
 import (

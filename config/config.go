@@ -14,6 +14,9 @@
  * limitations under the License.
  */
 
+// Package config 跨组件共享的 LLM 配置类型(LLMConfig/ModelParams)与
+// 模型能力注册表(vision/function_calling 等),供各节点与客户端统一引用。
+
 package config
 
 import (

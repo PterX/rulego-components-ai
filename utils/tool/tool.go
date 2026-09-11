@@ -1,3 +1,5 @@
+// Package tool eino 工具参数的 JSON Schema 解析辅助。
+
 package tool
 
 import (

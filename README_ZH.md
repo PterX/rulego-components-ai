@@ -37,6 +37,8 @@
 ```
 ai/
 ├── agent/          # 核心 ReAct 智能体节点（类型: ai/agent）
+│   └── lite/       #   ai/agent 的同名轻量实现（纯标准库,不经
+│                   #   eino/sonic,32 位平台可编译）
 ├── action/         # 简单 LLM 操作节点
 │                   #   - ai/llm       文本生成
 │                   #   - ai/createImage 图片生成
@@ -59,12 +61,15 @@ ai/
 │   ├── write/      #   文件写入
 │   ├── edit/       #   文件编辑（行级、搜索替换）
 │   ├── browseruse/ #   浏览器自动化（chromedp）
+│   ├── glob/       #   文件模式匹配
+│   ├── grep/       #   内容搜索（正则 + 字面量）
 │   ├── mcp/        #   MCP 工具适配器（self + 远程模式）
 │   └── skill/      #   技能调用
 ├── utils/          # 工具函数
 │   ├── contextx/   #   类型安全的 Context Key
 │   ├── image/      #   图片加载、Base64 转换
 │   ├── llm/        #   LLM 响应解析
+│   ├── doomloop/   #   工具重复调用死循环检测
 │   ├── token/      #   Token 估算与指标采集
 │   └── tool/       #   工具参数 JSON Schema 解析
 └── all/            # 一键引入所有组件
@@ -170,12 +175,28 @@ func main() {
 
 | 节点类型 | 包路径 | 说明 |
 |---------|--------|------|
-| `ai/agent` | `agent` | ReAct 智能体，支持工具调用、流式输出、多模态 |
+| `ai/agent` | `agent` / `agent/lite` | ReAct 智能体，支持工具调用、流式输出、多模态；两个同名实现见下方说明 |
 | `ai/llm` | `action` | 单次文本生成 |
 | `ai/createImage` | `action` | 图片生成（DALL-E 3） |
 | `ai/intent` | `intent` | 基于 LLM 的意图识别 |
 | `ai/localIntent` | `intent` | 基于嵌入向量的意图识别（低延迟、零 LLM 调用） |
-| `x/mcpClient` | `mcp` | MCP 客户端节点 |
+| `ai/mcpClient` | `mcp` | MCP 客户端节点 |
+
+> **`ai/agent` 有两个同名实现**：完整版在 `agent`（eino），轻量版在 `agent/lite`（纯标准库、32 位平台、failover 容灾、技能注入）。两包同时引入时先注册者生效——`all` 捆绑包固定 eino 版在前；单独引入 `agent/lite`（或 32 位构建）即得轻量版。两者输入/输出契约（请求消息、SSE 帧、metadata）完全一致，字段级明细见下方对照表。独立类型名 `ai/agentLite` 已废弃。
+
+### `ai/agent` 两实现对照
+
+| 字段 | eino 版(`agent`) | lite 实现(`agent/lite`) |
+|---|---|---|
+| `url` / `key` / `model` / `systemPrompt` / `maxStep` / `maxToolOutputLength` / `maxRetries` / `images` | 支持 | 支持——同名同义同缺省(maxStep 50、maxRetries 3、工具输出按 rune 截断) |
+| `url`/`key`/`model` 中的 `${global.*}` | 宿主在链加载前替换 | 节点内解析引擎 Properties |
+| `params.temperature` / `topP` / `maxTokens` | 零值套默认 0.7 / 0.9;`maxTokens` 线上映射 `max_completion_tokens` | 一致 |
+| `params` 其余(`presencePenalty`、`frequencyPenalty`、`stop`、`responseFormat`、`jsonSchema`、`keepThink`、`extraFields`) | 支持 | 忽略 |
+| `messages` / `streamRetryMode` / `streamToolCallCheck` | 支持 | 忽略 |
+| `failover[]` `url`/`key`/`model` + `circuitCooldownSec` | 支持 | 支持——端点级 `params` 覆盖不承接 |
+| `tools` | 字符串条目或描述符对象(`{type,name,targetId,...}`) | 仅字符串条目(允许列表,空=不过滤)——字符串写法两实现通用;对象描述符仅 eino 版,lite Init 显式报错 |
+| `skillsDir` / `skills` | 无 | 提示词注入式技能(lite 特有) |
+
 
 ## 智能体配置（ai/agent）
 
@@ -214,7 +235,8 @@ func main() {
 
 | 类型 | 说明 |
 |------|------|
-| `builtin` | 内置工具：`bash`、`read`、`write`、`edit`、`browseruse`、`skill` |
+| string | 字符串速记：直接写工具名，按名解析（工厂实例 → RuleConfig UDF → 全局注册表）；两个 `ai/agent` 实现通用的可移植写法 |
+| `builtin` | 内置工具：`bash`、`read`、`write`、`edit`、`glob`、`grep`、`browseruse`、`skill` |
 | `rulechain` | 调用另一条规则链作为工具 |
 | `agent` | 调用子智能体（rulechain 的语义别名） |
 | `mcp` | MCP 协议工具，支持 self（进程内）和远程（http/stdio）模式 |

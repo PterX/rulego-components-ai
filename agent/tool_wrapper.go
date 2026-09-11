@@ -30,6 +30,7 @@ import (
 	"github.com/rulego/rulego-components-ai/aspect"
 	"github.com/rulego/rulego-components-ai/config"
 	"github.com/rulego/rulego-components-ai/session"
+	"github.com/rulego/rulego-components-ai/utils/doomloop"
 	"github.com/rulego/rulego-components-ai/utils/token"
 	"github.com/rulego/rulego/api/types"
 )
@@ -322,7 +323,7 @@ func (w *VisualToolWrapper) InvokableRun(ctx context.Context, argumentsInJSON st
 
 	// doom-loop 检测（执行前：滑动窗口内同名同参重复）
 	var doomWarn string
-	if detector := GetDoomLoopDetector(ctx); detector != nil {
+	if detector := doomloop.GetDoomLoopDetector(ctx); detector != nil {
 		if warn := detector.BeforeCall(w.name, argumentsInJSON); warn != "" {
 			doomWarn = warn
 			if w.logger != nil {
@@ -349,7 +350,7 @@ func (w *VisualToolWrapper) InvokableRun(ctx context.Context, argumentsInJSON st
 		}
 		blockedResult := fmt.Sprintf("Error: doom_loop_repeated - 工具 %s 本次调用被拒绝执行。%s", w.name, msg)
 		// 仍记录到 doom history（让后续轮次持续计数）
-		if detector := GetDoomLoopDetector(ctx); detector != nil {
+		if detector := doomloop.GetDoomLoopDetector(ctx); detector != nil {
 			detector.AfterCall(w.name, argumentsInJSON, true)
 		}
 		duration := time.Since(startTime).Milliseconds()
@@ -385,7 +386,7 @@ func (w *VisualToolWrapper) InvokableRun(ctx context.Context, argumentsInJSON st
 	result, err = w.base.InvokableRun(ctx, argumentsInJSON, opts...)
 
 	// doom-loop 检测（执行后：记录本次调用 + 连续失败）
-	if detector := GetDoomLoopDetector(ctx); detector != nil {
+	if detector := doomloop.GetDoomLoopDetector(ctx); detector != nil {
 		if warn := detector.AfterCall(w.name, argumentsInJSON, err != nil || isFailureResult(result)); warn != "" {
 			// 走到这里 doomWarn 必为空（doom 命中已在上方 early return），直接赋值即可
 			doomWarn = warn

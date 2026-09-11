@@ -519,9 +519,7 @@ func (s *McpServer) ruleChainToolHandler(chainId, startNodeId string, pool types
 			wg.Done()
 		}))
 
-		// Use OnMsgAndWait if possible, but we are manually waiting with WaitGroup to capture result properly
-		// Actually, ruleEngine.OnMsgAndWait blocks until OnEnd, so we can use it directly or use OnMsg + WaitGroup.
-		// Using OnMsg + WaitGroup allows us to capture the result in the callback closure.
+		// OnMsg + WaitGroup:结果与错误在 OnEnd 回调闭包里捕获,WaitGroup 同步等待。
 		ruleEngine.OnMsg(types.NewMsgWithJsonData(msg), opts...)
 
 		// 使用带超时的等待，防止永久阻塞

@@ -1,5 +1,3 @@
-// Package constants provides centralized constant definitions for the AI components.
-// This package aims to eliminate hardcoded values and improve maintainability.
 package constants
 
 // LLM Provider URLs

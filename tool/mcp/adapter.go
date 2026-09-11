@@ -1,3 +1,6 @@
+// Package mcp MCP 工具适配器:self 模式消费进程内 MCPToolProvider,
+// remote 模式经 http/stdio 自动发现远程工具;一条配置展开多工具。
+
 package mcp
 
 import (
